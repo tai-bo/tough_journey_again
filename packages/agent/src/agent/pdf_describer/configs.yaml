@@ -1,0 +1,4 @@
+model_name: GEMINI_FLASH_LITE
+temperature: 1
+timeout: 60
+max_tokens: 2000

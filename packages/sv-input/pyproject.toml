@@ -1,0 +1,25 @@
+[project]
+name = "sv-input"
+version = "0.1.0"
+dependencies = [
+    "lib",
+    "sv-agent",
+    "sv-vector-db",
+    "storage",
+    "vector-db",
+    "vo-user",
+    "agent",
+]
+
+[tool.uv.sources]
+lib = { workspace = true }
+storage = { workspace = true }
+vector-db = { workspace = true }
+sv-agent = { workspace = true }
+sv-vector-db = { workspace = true }
+vo-user = { workspace = true }
+agent = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.11.12,<0.12"]
+build-backend = "uv_build"

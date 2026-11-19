@@ -1,0 +1,17 @@
+[project]
+name = "lib"
+version = "0.1.0"
+dependencies = [
+  "google-genai>=2.11.0",
+  "hypercorn>=0.18.0",
+  "logfire>=4.32.1",
+  "pydantic>=2.13.3",
+  "pydantic-extra-types>=2.11.1",
+  "pydantic-settings[gcp-secret-manager]>=2.14.0",
+  "pyyaml>=6.0.3",
+  "restate-sdk[serde]>=0.17.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.12,<0.12"]
+build-backend = "uv_build"

@@ -1,0 +1,11 @@
+[project]
+name = "sv-ouput"
+version = "0.1.0"
+dependencies = ["lib"]
+
+[tool.uv.sources]
+lib = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.11.12,<0.12"]
+build-backend = "uv_build"

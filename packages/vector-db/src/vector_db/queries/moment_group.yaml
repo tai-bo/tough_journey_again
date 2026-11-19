@@ -1,0 +1,12 @@
+datetime_filter_field: timestamp
+payload_sort_by: timestamp
+page_size: 100
+
+with_payloads:
+  - timestamp
+  - description
+
+with_vectors:
+  - search result
+  - classification
+  - clustering

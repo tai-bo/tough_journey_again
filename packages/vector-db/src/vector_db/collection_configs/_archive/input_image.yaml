@@ -1,0 +1,24 @@
+index_auth_uid: true
+
+vector_configs:
+  - name: SEARCH
+    size: 768
+  
+  - name: CLASSIFICATION
+    size: 768
+
+  - name: CLUSTERING
+    size: 768
+
+payload_index_schemas:
+  - field_name: tags
+    field_schema: keyword
+
+  - field_name: image_input_file_metadata.created_at
+    field_schema: datetime
+
+  - field_name: image_input_file_metadata.location.geo
+    field_schema: geo
+
+full_text_index_schemas:
+  - field_name: image_description

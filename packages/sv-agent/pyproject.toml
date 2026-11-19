@@ -1,0 +1,13 @@
+[project]
+name = "sv-agent"
+version = "0.1.0"
+dependencies = ["lib", "agent", "storage"]
+
+[tool.uv.sources]
+lib = { workspace = true }
+agent = { workspace = true }
+storage = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.11.12,<0.12"]
+build-backend = "uv_build"

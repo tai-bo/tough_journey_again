@@ -1,0 +1,184 @@
+name: deploy-cloud-run
+run-name: >-
+  Deploy to ${{
+    github.event.pull_request.base.ref == 'tai-pr-tst' && 'tai-pr-tst' || 
+    github.event.pull_request.base.ref == 'tai-pr-prd' && 'tai-pr-prd' || 
+    github.ref_name == 'tai-pr-tst' && 'tai-pr-tst' || 
+    github.ref_name == 'tai-pr-prd' && 'tai-pr-prd' || 
+    'tai-pr-dev' 
+  }}
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+    workflow_dispatch:  # Manually trigger the workflow
+      inputs:
+        cloud_run_to_deploy:
+          description: 'Target Cloud Run Service'
+          required: true
+          default: 'sv-input'
+          type: choice
+          options:
+            - all
+            - sv-input
+            - sv-agent
+            - sv-vector-db
+            - vo-user
+    push:
+      branches:
+        - add_github_action_20260723
+
+env:
+  GCP_SERVICE_ACCOUNT_DEV: ${{ secrets.GCP_SERVICE_ACCOUNT_DEV }}
+  GCP_SERVICE_ACCOUNT_TST: ${{ secrets.GCP_SERVICE_ACCOUNT_TST }}
+  GCP_SERVICE_ACCOUNT_PRD: ${{ secrets.GCP_SERVICE_ACCOUNT_PRD }}
+  GCP_TF_SERVICE_ACCOUNT: ${{ secrets.GCP_TF_SERVICE_ACCOUNT }}
+  RESTATE_ADMIN_URL: ${{ secrets.RESTATE_ADMIN_URL }}
+  RESTATE_AUTH_TOKEN: ${{ secrets.RESTATE_AUTH_TOKEN }}
+
+jobs:
+  get-target-service:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.get-target-service.outputs.matrix }}
+    steps:
+      - name: Get Target Service
+        id: get-target-service
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # MANUAL TRIGGER
+            MANUAL_CHOICE="${{ inputs.cloud_run_to_deploy }}"
+            if [ "$MANUAL_CHOICE" == "all" ]; then
+              JSON='["sv-input", "sv-agent", "sv-vector-db", "vo-user"]'
+            else
+              JSON="[\"$MANUAL_CHOICE\"]"
+            fi
+
+          else
+            # GIT PUSH TRIGGER
+            COMMIT_MSG="${{ github.event.head_commit.message }}"
+            
+            if [[ "$COMMIT_MSG" =~ \[deploy:(sv-input|sv-agent|sv-vector-db|vo-user)\] ]]; then
+              SERVICE="${BASH_REMATCH[1]}"
+              JSON="[\"$SERVICE\"]"
+            else
+              # Default fallback if no commit tag is found
+              JSON='["sv-input", "sv-agent", "sv-vector-db", "vo-user"]'
+            fi
+          fi
+
+          echo "Target Service: $JSON"
+          echo "matrix=$JSON" >> $GITHUB_OUTPUT
+  
+  deploy:
+    needs: get-target-service
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target_service: ${{ fromJson(needs.get-target-service.outputs.matrix) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      
+      - name: Get project id
+        id: get-project-id
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH="${{ github.base_ref }}"
+          else
+            BRANCH="${{ github.ref_name }}"
+          fi
+
+          if [[ "$BRANCH" == "tai-pr-dev" || "$BRANCH" == "tai-pr-tst" || "$BRANCH" == "tai-pr-prd" ]]; then
+            PROJECT_ID="$BRANCH"
+          else
+            PROJECT_ID="tai-pr-dev"
+          fi
+
+          echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+
+      - name: Set gcp sa
+        id: set-sa
+        run: |
+          PROJECT_ENV=${PROJECT_ID: -3}
+          echo "project env: $PROJECT_ENV"
+          case $PROJECT_ENV in
+            dev) echo "GCP_SERVICE_ACCOUNT=$GCP_SERVICE_ACCOUNT_DEV" >> $GITHUB_ENV ;;
+            tst) echo "GCP_SERVICE_ACCOUNT=$GCP_SERVICE_ACCOUNT_TST" >> $GITHUB_ENV ;;
+            prd) echo "GCP_SERVICE_ACCOUNT=$GCP_SERVICE_ACCOUNT_PRD" >> $GITHUB_ENV ;;
+            *) echo "Invalid" ; exit 1 ;;
+          esac
+      
+      - name: GCP WIF
+        uses: 'google-github-actions/auth@v3'
+        with:
+            workload_identity_provider: ${{ secrets.GCP_WIF }}
+            service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          version: 'latest'
+
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker ${{ vars.REGION }}-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set Dynamic Image Tag
+        run: |
+          SERVICE_NAME="${{ matrix.target_service }}"
+          IMAGE_TAG="${{ vars.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/tai-pr-docker/${SERVICE_NAME}:latest"
+          
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "DOCKERFILE_PATH=packages/${SERVICE_NAME}/Dockerfile" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE_PATH }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ matrix.target_service }} \
+            --project=${{ env.PROJECT_ID }} \
+            --image ${{ env.IMAGE_TAG }} \
+            --port 9080 \
+            --use-http2 \
+            --no-invoker-iam-check \
+            --set-env-vars GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }} \
+            --set-env-vars TAI_IS_LOCAL=0 \
+            --set-env-vars RESTATE_IDENTITY_KEY=${{ vars.RESTATE_PUBLIC_KEY }} \
+            --cpu=1 \
+            --memory=512Mi \
+            --concurrency=1 \
+            --min-instances=1 \
+            --max-instances=1 \
+            --timeout=180 \
+            --region=${{ vars.REGION }} \
+            --service-account=${{ env.PROJECT_ID }}-sa-cloud-run@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      # - name: Setup Node.js
+      #   uses: actions/setup-node@v4
+
+      # - name: Install Restate CLI
+      #   run: npm install --global @restatedev/restate
+      
+      # - name: Test Restate Connection
+      #   run: restate whoami
+
+      # - name: Register Restate Deployments
+      #   if: ${{ inputs.service_to_deploy == 'all' || inputs.service_to_deploy == matrix.service }}
+      #   run: |
+      #     restate deployments register "https://${{ matrix.service }}-1053905202146.us-central1.run.app" -e ${{ env.PROJECT_ENV }}

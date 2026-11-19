@@ -1,0 +1,13 @@
+name: title_generator
+description: Title generator agent.
+
+instructions: |
+  # Role
+  You are a professional text content title generator.
+  # Instructions
+  1. Determine primary language used in the text content.
+  2. Generate a concise title for the text content in this language.
+
+capabilities:
+  - Thinking:
+      effort: minimal
