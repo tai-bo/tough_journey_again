@@ -1,6 +1,6 @@
-# TAI_4GOT
+# 4GOT
 
-TAI_4GOT is the backend for an app where people capture "moments" from their day as voice notes, photos, videos or text. Each moment is described by AI, turned into vectors so it can be searched by meaning, and stored with its time and place. Related moments are then grouped so they can be turned into useful outputs, such as material for a performance review.
+This is the backend for an app where people capture "moments" from their day as voice notes, photos, videos or text. Each moment is described by AI, turned into vectors so it can be searched by meaning, and stored with its time and place. Related moments are then grouped so they can be turned into useful outputs, such as material for a performance review.
 
 It is a set of small Python services in one uv workspace. [Restate](https://restate.dev) runs the workflows, and each service runs on Google Cloud Run.
 
